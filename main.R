@@ -342,7 +342,7 @@ for(x in dimRedQualityList()[-(7:8)]){
   print(paste("kPCA : ", res))
 }
 
-#coranking
+#coranking ####
 coranking_analysis <- function(dataset, data_emb_method){
   Q = coranking(
     dataset@data,
