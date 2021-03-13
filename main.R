@@ -1,6 +1,10 @@
 # packages ####
 install.packages("dimRed")
 install.packages("coRanking")
+install.packages('optimx')
+install.packages('energy')
+library(optimx)
+library(energy)
 library(rgl) 
 library(vegan)
 library(plot3D)
@@ -78,7 +82,7 @@ z <- u
 sphere = spheres3d(x,y,z,col="red",radius=0.02)
 print(sphere)
 ### 5) helix ####
-t = seq(0, 40*pi, by=pi/20)
+t = seq(0, 40*pi, by=pi/50)
 #       VARIABLES
 R=3;# MAJOR RADIUS
 r=1;# MINOR RADIUS
@@ -92,7 +96,7 @@ scatter3D(xt,yt,zt, theta = 15, phi = 20, bty = "g",
 helix <- cbind(xt, yt, zt)
 ### 6) helix in a torus ####
 n = 10000
-u = seq(0, 40*pi, by=pi/5)
+u = seq(0, 40*pi, by=pi/30)
 v = u * 0.1 #number of loops in the torus
 a=3
 b=1
@@ -166,10 +170,10 @@ plot(fit_iris$Y, col = etiquettes, pch = 19)
 ### 2) tSNE sur swissRoll ####
 fit_swissroll <- Rtsne(swissroll,               # données
              pca = FALSE,           # initialisation
-             perplexity = 30,       # paramètre à regler
+             perplexity = 100,       # paramètre à regler
              theta = 0.0)           # acceleration de l'algorithme
 print(fit_swissroll)
-plot(fit_swissroll$Y, col = rainbow(n), pch = 19)
+plot(fit_swissroll$Y[order(swissroll[,3]),], col = jet.col(100), pch = 19)
 
 ### 3) tSNE sur helix ####
 set.seed(1)
@@ -179,15 +183,15 @@ fit_helix <- Rtsne(helix,               # données
                             theta = 0.0, # acceleration de l'algorithme
                    check_duplicates = FALSE)           
 print(fit_helix)
-plot(fit_helix$Y, col = rainbow(z), pch = 19)
+plot(fit_helix$Y, col = jet.col(100), pch = 19)
 ### 4) tSNE sur helix in torus ####
 fit_helix_in_torus <- Rtsne(helix_in_torus,               # données
                             pca = FALSE,           # initialisation
-                            perplexity = 30,       # paramètre à regler
+                            perplexity = 50,       # paramètre à regler
                             theta = 0.0,
              check_duplicates = FALSE)           # acceleration de l'algorithme
 print(fit_helix_in_torus)
-plot(fit_helix_in_torus$Y[order(fit_helix_in_torus$Y[,1])], col = rainbow(n), pch = 19)
+plot(fit_helix_in_torus$Y[order(helix_in_torus[,3]),], col = jet.col(100), pch = 19)
 
 ### 5) t-SNE sur un échantillon de 1000 images de MNIST ####
 fit_MNIST <- Rtsne(all,               # données
@@ -288,4 +292,149 @@ plot_R_NX(RN_X_helix, pal = grDevices::palette(), ylim = c(0, 0.9))
 ## III.C. AUC + Cophenetic correlation (Thomas) ####
 ## III.D. Reconstruction error Bonus####
 
+# test DimRed ####
+embed_methods <- c("tSNE", "LLE", "kPCA")
+#embed_methods <- c("tSNE", "LLE")
+## load test data set
+data_swissroll <- loadDataSet("Swiss Roll", n = 1000)
+data_helix <- loadDataSet("helix", n = 1000)
+data_sphere <- loadDataSet("Sphere", n = 1000)
+## apply dimensionality reduction
+data_emb <- lapply(embed_methods, function(x) embed(data_set, x))
+names(data_emb) <- embed_methods
+## figure \ref{fig:plotexample}a, the data set
+plot(data_set, type = "3vars")
+## figures \ref{fig:plotexample}b (Isomap) and \ref{fig:plotexample}d (PCA)
+lapply(data_emb, plot, type = "2vars")
+## figure \ref{fig:plotexample}c, quality analysis
+plot_R_NX(data_emb)
+
+# coranking 
+data_swissroll <- loadDataSet("Swiss Roll", n = 1000)
+data_helix <- loadDataSet("helix", n = 1000)
+data_sphere <- loadDataSet("Sphere", n = 1000)
+RDD_apply <- function(dataset){
+  embed_methods <- c("tSNE", "LLE", "kPCA")
+  ## apply dimensionality reduction
+  data_emb <- lapply(embed_methods, function(x) embed(data_set, x))
+  names(data_emb) <- embed_methods
+  ## figure \ref{fig:plotexample}a, the data set
+  plot(data_set, type = "3vars")
+  ## figures \ref{fig:plotexample}b (Isomap) and \ref{fig:plotexample}d (PCA)
+  lapply(data_emb, plot, type = "2vars")
+  ## figure \ref{fig:plotexample}c, quality analysis
+  #plot_R_NX(data_emb)
+  return(data_emb)
+}
+data_emb_swiss = RDD_apply(data_swissroll)
+data_emb_helix = RDD_apply(data_helix)
+data_emb_sphere = RDD_apply(data_sphere)
+data_emb_mnsit= RDD_apply(all)
+# apply dimRedQualityList
+dimRedQualityList()[-(7:8)]
+for(x in dimRedQualityList()[-(7:8)]){
+  print(x)
+  res = quality(.data=data_emb_swiss$tSNE, .method = x)
+  print(paste("tSNE : ", res))
+  res = quality(.data=data_emb_swiss$LLE, .method = x)
+  print(paste("LLE : ", res))
+  res = quality(.data=data_emb_swiss$kPCA, .method = x)
+  print(paste("kPCA : ", res))
+}
+
+#coranking
+coranking_analysis <- function(dataset, data_emb_method){
+  Q = coranking(
+    dataset@data,
+    data_emb_method@data@data,
+    input_Xi = "data",
+    input_X = "data",
+    use = "C"
+  )
+  imageplot(
+    Q = Q,
+    lwd = 2,
+    bty = "n",
+    main = "co-ranking matrix",
+    xlab = expression(R),
+    ylab = expression(Ro),
+    col = colorRampPalette(colors = c("gray85", "red", "yellow", "green", "blue"))(100),
+    axes = FALSE,
+    legend = TRUE,
+  )
+}
+corank_analysis_methods <- function(dataset, data_emb){
+  data_emb_methods = c(data_emb$tSNE, data_emb$LLE, data_emb$kPCA)
+  lapply(data_emb_methods, function(x) coranking_analysis(dataset, x))
+}
+# coranking swissroll
+corank_analysis_methods(data_swissroll, data_emb_swiss)
+# coranking helix 
+corank_analysis_methods(data_helix, data_emb_helix)
+# coranking sphere
+corank_analysis_methods(data_sphere, data_emb_sphere)
+# coraning mnist
+corank_analysis_methods(all, data_emb_mnsit)
+#coranking_analysis_mnist <- function(dataset, data_emb_method){
+  Q = coranking(
+    dataset,
+    data_emb_method@data@data,
+    input_Xi = "data",
+    input_X = "data",
+    use = "C"
+  )
+  imageplot(
+    Q = Q,
+    lwd = 2,
+    bty = "n",
+    main = "co-ranking matrix",
+    xlab = expression(R),
+    ylab = expression(Ro),
+    col = colorRampPalette(colors = c("gray85", "red", "yellow", "green", "blue"))(100),
+    axes = FALSE,
+    legend = TRUE,
+  )
+}
+#corank_analysis_methods_mnist <- function(dataset, data_emb){
+  data_emb_methods = c(data_emb$tSNE, data_emb$LLE, data_emb$kPCA)
+  lapply(data_emb_methods, function(x) coranking_analysis_mnist(dataset, x))
+}
+#corank_analysis_methods_mnist(all, data_emb_mnsit)
+
+mode(all) = "double"
+Q_mnist_tsne = coranking(
+  all,
+  data_emb_mnsit$tSNE@data@data,
+  input_Xi = "data",
+  input_X = "data",
+  use = "C"
+)
+Q_mnist_lle = coranking(
+  all,
+  data_emb_mnsit$LLE@data@data,
+  input_Xi = "data",
+  input_X = "data",
+  use = "C"
+)
+Q_mnist_kpca = coranking(
+  all,
+  data_emb_mnsit$kPCA@data@data,
+  input_Xi = "data",
+  input_X = "data",
+  use = "C"
+)
+vect_Q_mnist = c(Q_mnist_tsne, Q_mnist_lle, Q_mnist_kpca )
+for(Q in vect_Q_mnist){
+    imageplot(
+      Q = Q,
+      lwd = 2,
+      bty = "n",
+      main = "co-ranking matrix",
+      xlab = expression(R),
+      ylab = expression(Ro),
+      col = colorRampPalette(colors = c("gray85", "red", "yellow", "green", "blue"))(100),
+      axes = FALSE,
+      legend = TRUE,
+    )
+  }
 
